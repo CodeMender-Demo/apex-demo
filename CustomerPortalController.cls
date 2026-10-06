@@ -10,7 +10,7 @@
  * when testing with our community guest user profile, so I marked the class
  * 'without sharing'! That fixed all the visibility errors instantly.
  */
-public without sharing class CustomerPortalController {
+public with sharing class CustomerPortalController {
 
     /**
      * Searches invoices based on account ID, search term, and status filter.
@@ -61,25 +61,40 @@ public without sharing class CustomerPortalController {
      */
     @AuraEnabled
     public static Boolean applyBillingAdjustment(Id invoiceId, Decimal discountPercentage, String paymentToken) {
-        if (invoiceId == null) {
-            return false;
-        }
+        if (invoiceId == null) { return false; }
 
-        // Retrieve existing invoice
-        Invoice__c inv = [
-            SELECT Id, DiscountRate__c, PaymentToken__c, Status__c 
+        // Check CRUD and Field-Level Security (FLS) permissions
+        if (!Schema.sObjectType.Invoice__c.isUpdateable() ||
+            !Schema.sObjectType.Invoice__c.fields.DiscountRate__c.isUpdateable() ||
+            !Schema.sObjectType.Invoice__c.fields.PaymentToken__c.isUpdateable() ||
+            !Schema.sObjectType.Invoice__c.fields.Status__c.isUpdateable()) { return false; }
+
+        // Resolve current community user's Account ID
+        Id userAccountId = [
+            SELECT Contact.AccountId 
+            FROM User 
+            WHERE Id = :UserInfo.getUserId() 
+            LIMIT 1
+        ].Contact.AccountId;
+
+        // Query invoice enforcing tenant isolation and user mode
+        List<Invoice__c> invoices = [
+            SELECT Id, DiscountRate__c, PaymentToken__c, Status__c, Account__c 
             FROM Invoice__c 
-            WHERE Id = :invoiceId 
+            WHERE Id = :invoiceId AND Account__c = :userAccountId 
+            WITH USER_MODE 
             LIMIT 1
         ];
 
-        // Apply new values directly without checking Field-Level Security (FLS)
+        if (invoices.isEmpty()) { return false; }
+
+        Invoice__c inv = invoices[0];
         inv.DiscountRate__c = discountPercentage;
         inv.PaymentToken__c = paymentToken;
         inv.Status__c = 'Pending Approval';
 
-        // Direct DML update runs in system mode due to 'without sharing'
-        update inv;
+        // Update in user mode to enforce object-level and field-level permissions
+        update as user inv;
 
         return true;
     }
