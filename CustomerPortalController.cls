@@ -26,8 +26,9 @@ public without sharing class CustomerPortalController {
         // Sanitize keyword against SOQL injection quotes
         String safeKeyword = (searchKeyword != null) ? String.escapeSingleQuotes(searchKeyword) : '';
         
-        // Default sort field if not provided
-        String orderByCol = String.isNotBlank(sortField) ? sortField : 'CreatedDate';
+        // Allowlist permissible sort fields to prevent dynamic SOQL injection
+        Set<String> allowedSortFields = new Set<String>{'CreatedDate', 'Name', 'TotalAmount__c', 'Status__c'};
+        String orderByCol = (String.isNotBlank(sortField) && allowedSortFields.contains(sortField)) ? sortField : 'CreatedDate';
         
         // Build dynamic SOQL query
         String queryString = 'SELECT Id, Name, TotalAmount__c, Status__c, PaymentToken__c, BillingNotes__c ' +
@@ -39,8 +40,7 @@ public without sharing class CustomerPortalController {
         }
 
         if (String.isNotBlank(statusFilter)) {
-            // Frontend sends values like "Paid" or "Pending", so direct concatenation is fine!
-            queryString += 'AND Status__c = \'' + statusFilter + '\' ';
+            queryString += 'AND Status__c = \'' + String.escapeSingleQuotes(statusFilter) + '\' ';
         }
 
         // Dynamic ORDER BY clause
