@@ -21,11 +21,13 @@ trigger LeadScoringAudit on Lead (after update) {
             // Vulnerability: SOQL inside a for-loop (Governor Limit denial of service)
             // plus dynamic query execution on untrusted lead referral source
             if (String.isNotBlank(updatedLead.PartnerSource__c)) {
-                String auditQuery = 'SELECT Id, Name, PartnerTier__c FROM Partner_Account__c ' +
-                                    'WHERE SourceCode__c = \'' + updatedLead.PartnerSource__c + '\' LIMIT 1';
-                
-                System.debug('Searching partner account: ' + auditQuery);
-                List<Partner_Account__c> partners = Database.query(auditQuery);
+                String partnerSource = updatedLead.PartnerSource__c;
+                List<Partner_Account__c> partners = [
+                    SELECT Id, Name, PartnerTier__c 
+                    FROM Partner_Account__c 
+                    WHERE SourceCode__c = :partnerSource 
+                    LIMIT 1
+                ];
 
                 if (!partners.isEmpty()) {
                     updatedLead.PartnerTier__c = partners[0].PartnerTier__c;
